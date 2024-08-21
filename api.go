@@ -49,7 +49,19 @@ func (s *APIServer) handleAccount(w http.ResponseWriter, r *http.Request) error 
 
 }
 
-func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) error { // main account handling
+// func to get all available accounts  GET/account
+
+func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) error {
+
+	accounts, err := s.store.GetAccounts()
+	if err != nil {
+		return err
+	}
+	return WriteJSON(w, http.StatusOK, accounts)
+}
+
+// function to get accnt by ID
+func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request) error { // main account handling
 	//account := NewAccount("DHEERAJ", "UNNI")
 	id := mux.Vars(r)["id"] // getting id from the request argument
 	fmt.Println("the selected ID is ", id)
@@ -57,8 +69,23 @@ func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) err
 
 }
 
+// NOW WE ARE GOING TO DEFINE THE LOGIC TO HANDLE ACCOUNT CREATION
 func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) error { // FOR POST request
-	return nil
+
+	//thr Request shld be of the type we defined.
+
+	createAccountReq := new(CreateAccountRequest)
+	//decoding the user sent JSON and matching it with our Type.
+	if err := json.NewDecoder(r.Body).Decode(createAccountReq); err != nil {
+		return err
+	}
+
+	//creation of a new account with the data that we got from the user.
+	account := NewAccount(createAccountReq.FirstName, createAccountReq.LasttName)
+	if err := s.store.CreateAccount(account); err != nil {
+		return err
+	}
+	return WriteJSON(w, http.StatusOK, account)
 
 }
 
@@ -80,8 +107,8 @@ func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error
 func (s *APIServer) Run() {
 
 	router := mux.NewRouter()
-	router.HandleFunc("/account", makeHTTPHandler(s.handleAccount))      //see that we have wrapped the function handleAccount and converted it to a HTTP handler.
-	router.HandleFunc("/account/{id}", makeHTTPHandler(s.handleAccount)) // this is so that we can retrieve accounts by ID.
+	router.HandleFunc("/account", makeHTTPHandler(s.handleAccount))             //see that we have wrapped the function handleAccount and converted it to a HTTP handler.
+	router.HandleFunc("/account/{id}", makeHTTPHandler(s.handleGetAccountByID)) // this is so that we can retrieve accounts by ID.
 	log.Println("JSON API SERVER RUNNING ON PORT", s.listenAddr)
 	http.ListenAndServe(s.listenAddr, router) //Running the server.
 }
