@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/gorilla/mux"
 )
@@ -61,11 +62,18 @@ func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) err
 }
 
 // function to get accnt by ID
-func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request) error { // main account handling
-	//account := NewAccount("DHEERAJ", "UNNI")
-	id := mux.Vars(r)["id"] // getting id from the request argument
-	fmt.Println("the selected ID is ", id)
-	return WriteJSON(w, http.StatusOK, &Account{}) // return an empty account
+func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request) error { // fetch an account using ID
+	// the id that we get is gonna be a string so we convert it to int.
+	idStr := mux.Vars(r)["id"] // getting id from the request argument
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		return fmt.Errorf("invalid ID given %s !!! ", idStr)
+	}
+	account, err := s.store.GetAccountByID(id)
+	if err != nil {
+		return err
+	}
+	return WriteJSON(w, http.StatusOK, account) // return the selected  account
 
 }
 

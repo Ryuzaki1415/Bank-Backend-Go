@@ -14,7 +14,7 @@ type Account struct {
 	Number    int64  `json:"number"`
 
 	Balance   int64     `json:"balance"` // `json:"id"` says that whenever ID is mentioned, the json  encoding should be id
-	CreatedAt time.Time `json:"time`
+	CreatedAt time.Time `json:"time"`
 }
 
 //initializing new Account

@@ -62,8 +62,17 @@ func (s *PostgresStore) UpdateAcccount(*Account) error {
 }
 
 func (s *PostgresStore) GetAccountByID(id int) (*Account, error) {
-	return nil, nil
-}
+
+		rows,err:=s.db.Query("select * from account where id = $1 ",id)
+		
+		if err!=nil{
+			return nil,err
+		}
+		for rows.Next(){
+			return scanIntoAccount(rows)
+		}
+		return nil,fmt.Errorf("this account id does not exist : %v ",id)
+		}
 
 func (s *PostgresStore) GetAccounts() ([]*Account, error) {
 	//fetching all rows from the DB to Display When getting a GET REQUEST
@@ -71,23 +80,15 @@ func (s *PostgresStore) GetAccounts() ([]*Account, error) {
 	if err != nil {
 		return nil, err
 	}
-	accounts := []*Account{}
+	accounts := []*Account{}  // an array of accounts.
 
 	//iterating Through the ROWS
 	for rows.Next() {
-		account := new(Account)
-		if err := rows.Scan(
-			&account.ID, // basically we are taking all the columnnames and
-			//creating an accnt object for each individual account and then appending it to the accounts array
-			&account.FirstName,
-			&account.LastName,
-			&account.Number,
-			&account.Balance,
-			&account.CreatedAt,
-		); err != nil {
-			return nil, err
+		account,err :=scanIntoAccount(rows)  // returns the account object containing all values
+		if err!=nil{
+			return nil,err
 		}
-		accounts = append(accounts, account)
+		accounts = append(accounts, account)  // append this account to the array of accounts.
 	}
 	return accounts, nil
 
@@ -114,4 +115,22 @@ func (s *PostgresStore) CreateAccountTable() error {
 	_, err := s.db.Exec(query)
 	return err
 
+}
+
+
+func scanIntoAccount( rows *sql.Rows)(*Account,error){
+// function which scans the rows of DB and puts into account format
+	account := new(Account)
+		if err := rows.Scan(
+			&account.ID, // basically we are taking all the columnnames and
+			//creating an accnt object for each individual account and then appending it to the accounts array
+			&account.FirstName,
+			&account.LastName,
+			&account.Number,
+			&account.Balance,
+			&account.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+	return account,nil
 }
