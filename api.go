@@ -42,9 +42,6 @@ func (s *APIServer) handleAccount(w http.ResponseWriter, r *http.Request) error 
 	if r.Method == "POST" {
 		return s.handleCreateAccount(w, r)
 	}
-	if r.Method == "DELETE" {
-		return s.handleDeleteAccount(w, r)
-	}
 
 	return fmt.Errorf("METHOD NOT ALLOWED!!!! %s", r.Method)
 
@@ -64,17 +61,22 @@ func (s *APIServer) handleGetAccount(w http.ResponseWriter, r *http.Request) err
 // function to get accnt by ID
 func (s *APIServer) handleGetAccountByID(w http.ResponseWriter, r *http.Request) error { // fetch an account using ID
 	// the id that we get is gonna be a string so we convert it to int.
-	idStr := mux.Vars(r)["id"] // getting id from the request argument
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		return fmt.Errorf("invalid ID given %s !!! ", idStr)
+	if r.Method == "GET" {
+		id, err := getID(r)
+		if err != nil {
+			return err
+		}
+		account, err := s.store.GetAccountByID(id)
+		if err != nil {
+			return err
+		}
+		return WriteJSON(w, http.StatusOK, account) // return the selected  account
 	}
-	account, err := s.store.GetAccountByID(id)
-	if err != nil {
-		return err
-	}
-	return WriteJSON(w, http.StatusOK, account) // return the selected  account
+	if r.Method == "DELETE" {
+		return s.handleDeleteAccount(w, r)
 
+	}
+	return fmt.Errorf("METHOD IS NOT ALLOWED : %s", r.Method)
 }
 
 // NOW WE ARE GOING TO DEFINE THE LOGIC TO HANDLE ACCOUNT CREATION
@@ -98,7 +100,16 @@ func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) error { // FOR DELETE REQUEST
-	return nil
+
+	id, err := getID(r)
+	if err != nil {
+		return err
+	}
+
+	if err := s.store.DeleteAccount(id); err != nil {
+		return err
+	}
+	return WriteJSON(w, http.StatusOK, map[string]int{"deleted": id})
 
 }
 
@@ -121,7 +132,7 @@ func (s *APIServer) Run() {
 	http.ListenAndServe(s.listenAddr, router) //Running the server.
 }
 
-// we are co=nverting the functions to handlers using this code
+// we are converting the functions to handlers using this code
 
 type apiFunc func(http.ResponseWriter, *http.Request) error
 
@@ -146,4 +157,15 @@ func WriteJSON(w http.ResponseWriter, status int, v any) error {
 // we  use this to handle the errors
 type APIError struct {
 	Error string
+}
+
+// function to fetch ID from request ( since its being used in multiple places)
+
+func getID(r *http.Request) (int, error) {
+	idStr := mux.Vars(r)["id"] // getting id from the request argument
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		return id, fmt.Errorf("invalid ID given %s !!! ", idStr)
+	}
+	return id, nil
 }
