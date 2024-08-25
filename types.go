@@ -36,3 +36,9 @@ type CreateAccountRequest struct {
 	FirstName string `json:"firstName"`
 	LasttName string `json:"lastName"`
 }
+
+// creating a type for the money transfer request that the user sends.
+type TransferRequest struct {
+	ToAccount int `json:"toAccount"`
+	Amount    int `json:"amount"`
+}

@@ -114,7 +114,13 @@ func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error {
-	return nil
+
+	transferRequest:=new(TransferRequest)
+	if err:=json.NewDecoder(r.Body).Decode(transferRequest);err!=nil{
+		return err
+	}
+	defer r.Body.Close() //defer activates when fn execution ends.
+	return WriteJSON(w,http.StatusOK,transferRequest)
 
 }
 
@@ -128,6 +134,7 @@ func (s *APIServer) Run() {
 	router := mux.NewRouter()
 	router.HandleFunc("/account", makeHTTPHandler(s.handleAccount))             //see that we have wrapped the function handleAccount and converted it to a HTTP handler.
 	router.HandleFunc("/account/{id}", makeHTTPHandler(s.handleGetAccountByID)) // this is so that we can retrieve accounts by ID.
+	router.HandleFunc("/transfer", makeHTTPHandler(s.handleTransfer))             
 	log.Println("JSON API SERVER RUNNING ON PORT", s.listenAddr)
 	http.ListenAndServe(s.listenAddr, router) //Running the server.
 }
@@ -169,3 +176,7 @@ func getID(r *http.Request) (int, error) {
 	}
 	return id, nil
 }
+
+
+
+//We are going to implement JWT Authentication.
