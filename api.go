@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/gorilla/mux"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // here we create api server and handlers
@@ -95,6 +98,12 @@ func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) 
 	if err := s.store.CreateAccount(account); err != nil {
 		return err
 	}
+	//creation of a JWT token when we are making a new account.
+	tokenString, err := createJWT(account)
+	if err != nil {
+		return err
+	}
+	fmt.Println("JWT TOKEN :", tokenString)
 	return WriteJSON(w, http.StatusOK, account)
 
 }
@@ -115,12 +124,12 @@ func (s *APIServer) handleDeleteAccount(w http.ResponseWriter, r *http.Request) 
 
 func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error {
 
-	transferRequest:=new(TransferRequest)
-	if err:=json.NewDecoder(r.Body).Decode(transferRequest);err!=nil{
+	transferRequest := new(TransferRequest)
+	if err := json.NewDecoder(r.Body).Decode(transferRequest); err != nil {
 		return err
 	}
 	defer r.Body.Close() //defer activates when fn execution ends.
-	return WriteJSON(w,http.StatusOK,transferRequest)
+	return WriteJSON(w, http.StatusOK, transferRequest)
 
 }
 
@@ -132,9 +141,10 @@ func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error
 func (s *APIServer) Run() {
 
 	router := mux.NewRouter()
-	router.HandleFunc("/account", makeHTTPHandler(s.handleAccount))             //see that we have wrapped the function handleAccount and converted it to a HTTP handler.
-	router.HandleFunc("/account/{id}", makeHTTPHandler(s.handleGetAccountByID)) // this is so that we can retrieve accounts by ID.
-	router.HandleFunc("/transfer", makeHTTPHandler(s.handleTransfer))             
+	router.HandleFunc("/account", makeHTTPHandler(s.handleAccount)) //see that we have wrapped the function handleAccount and converted it to a HTTP handler.
+	//we have to protect /id
+	router.HandleFunc("/account/{id}", withJWTAuth(makeHTTPHandler(s.handleGetAccountByID), s.store)) // this is so that we can retrieve accounts by ID.
+	router.HandleFunc("/transfer", makeHTTPHandler(s.handleTransfer))
 	log.Println("JSON API SERVER RUNNING ON PORT", s.listenAddr)
 	http.ListenAndServe(s.listenAddr, router) //Running the server.
 }
@@ -177,6 +187,82 @@ func getID(r *http.Request) (int, error) {
 	return id, nil
 }
 
-
-
 //We are going to implement JWT Authentication.
+
+// this is gonna get executed all the time when we call the getaccountbyID
+func withJWTAuth(handlerFunc http.HandlerFunc, s Storage) http.HandlerFunc {
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("----------------CALLING MIDDLEWARE-------------------")
+		tokenString := r.Header.Get("x-jwt-token")
+		token, err := validateJWT(tokenString)
+		if err != nil {
+			permissionDenied(w)
+			return
+		}
+		if !token.Valid {
+			permissionDenied(w)
+			return
+		}
+
+		userID, err := getID(r)
+		if err != nil {
+			permissionDenied(w)
+			return
+		}
+		account, err := s.GetAccountByID(userID)
+		if err != nil {
+			permissionDenied(w)
+			return
+
+		}
+		//34:49
+		claims := token.Claims.(jwt.MapClaims)
+		if account.Number != int64(claims["accountNumber"].(float64)) {
+			permissionDenied(w)
+			return
+		}
+
+		if err != nil {
+			WriteJSON(w, http.StatusForbidden, APIError{Error: "INVALID TOKEN"})
+		}
+		handlerFunc(w, r)
+
+	}
+}
+
+// returns a pointer to JWT token
+// the secret is a long string saved in environ.“
+func validateJWT(tokenString string) (*jwt.Token, error) {
+	secret := os.Getenv("JWT_SECRET")
+	return jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// Don't forget to validate the alg is what you expect:
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
+		}
+
+		// Secret is a []byte containing your secret, e.g. []byte("my_secret_key")
+		return []byte(secret), nil
+	})
+
+}
+
+// function to create a JWT token when account creation is done.
+
+func createJWT(account *Account) (string, error) {
+	claims := &jwt.MapClaims{
+		"expiresAt":     15000,
+		"accountNumber": account.Number,
+	}
+	secret := os.Getenv("JWT_SECRET")
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(secret))
+
+}
+
+//eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2NvdW50TnVtYmVyIjozNDcwLCJleHBpcmVzQXQiOjE1MDAwfQ.wqJ10qI8JOHKv-uqAyydQpJYekVZfw0P7SpeCGMZkM8
+
+func permissionDenied(w http.ResponseWriter) {
+	WriteJSON(w, http.StatusForbidden, APIError{Error: "permission denied"})
+	return
+}
