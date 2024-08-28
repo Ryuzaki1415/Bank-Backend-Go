@@ -94,16 +94,19 @@ func (s *APIServer) handleCreateAccount(w http.ResponseWriter, r *http.Request) 
 	}
 
 	//creation of a new account with the data that we got from the user.
-	account := NewAccount(createAccountReq.FirstName, createAccountReq.LasttName)
-	if err := s.store.CreateAccount(account); err != nil {
-		return err
-	}
-	//creation of a JWT token when we are making a new account.
-	tokenString, err := createJWT(account)
+	account, err := NewAccount(createAccountReq.FirstName, createAccountReq.LasttName, createAccountReq.Password)
 	if err != nil {
 		return err
 	}
-	fmt.Println("JWT TOKEN :", tokenString)
+	if err := s.store.CreateAccount(account); err != nil {
+		return err
+	}
+	// //creation of a JWT token when we are making a new account.
+	// tokenString, err := createJWT(account)
+	// if err != nil {
+	// 	return err
+	// }
+	// fmt.Println("JWT TOKEN :", tokenString)
 	return WriteJSON(w, http.StatusOK, account)
 
 }
@@ -133,6 +136,37 @@ func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error
 
 }
 
+// function takes in an http login request and parses the body fields JSON onto the request type.
+func (s *APIServer) handleLogin(w http.ResponseWriter, r *http.Request) error {
+	if r.Method != "POST" {
+		return fmt.Errorf("METHOD IS NOT ALLOWED : %s", r.Method)
+	}
+
+	request := new(LoginRequest)
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		return err
+	}
+	//search the user here
+	acc, err := s.store.GetAccountByNumber(int(request.Number))
+	if err != nil {
+		return err
+
+	}
+	if !acc.ValidatePassword(request.Password){
+		return fmt.Errorf("not authenticated")
+	}
+	token,err:=createJWT(acc)
+	if err!=nil{
+		return err
+	}
+	resp:=LoginResponse{
+		Number: acc.Number,
+		Token: token,
+	}
+	fmt.Println("ACCOUNT DETAILS ", acc)
+	return WriteJSON(w, http.StatusOK,resp)
+}
+
 // Now create a function to start our server!!!   // install gorilla/mux for making routers!!!
 //remember to convert func to HTTP handler
 
@@ -141,6 +175,7 @@ func (s *APIServer) handleTransfer(w http.ResponseWriter, r *http.Request) error
 func (s *APIServer) Run() {
 
 	router := mux.NewRouter()
+	router.HandleFunc("/login", makeHTTPHandler(s.handleLogin))
 	router.HandleFunc("/account", makeHTTPHandler(s.handleAccount)) //see that we have wrapped the function handleAccount and converted it to a HTTP handler.
 	//we have to protect /id
 	router.HandleFunc("/account/{id}", withJWTAuth(makeHTTPHandler(s.handleGetAccountByID), s.store)) // this is so that we can retrieve accounts by ID.
@@ -216,7 +251,6 @@ func withJWTAuth(handlerFunc http.HandlerFunc, s Storage) http.HandlerFunc {
 			return
 
 		}
-		//34:49
 		claims := token.Claims.(jwt.MapClaims)
 		if account.Number != int64(claims["accountNumber"].(float64)) {
 			permissionDenied(w)
@@ -238,7 +272,7 @@ func validateJWT(tokenString string) (*jwt.Token, error) {
 	return jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		// Don't forget to validate the alg is what you expect:
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("Unexpected signing method: %v", token.Header["alg"])
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 
 		// Secret is a []byte containing your secret, e.g. []byte("my_secret_key")
